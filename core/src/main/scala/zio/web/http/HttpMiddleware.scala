@@ -1,7 +1,12 @@
 package zio.web.http
 
-import zio._
+import java.io.{IOException, OutputStream}
 import java.nio.charset.StandardCharsets
+
+import zio._
+import zio.blocking.Blocking
+import zio.clock._
+import zio.stream.{ZSink, ZStream}
 
 /**
  * An `HttpMiddleware[R, E]` value defines HTTP middleware that requires an
@@ -82,13 +87,21 @@ object HttpMiddleware {
       )
     )
 
-  val logging: HttpMiddleware[zio.console.Console, Nothing] =
+  def logging(dest: ZManaged[Blocking, IOException, OutputStream]): HttpMiddleware[Blocking with Clock, Exception] =
     HttpMiddleware(
-      ZIO.succeed(
-        Middleware(
-          request(HttpRequest.Method.zip(HttpRequest.URI))(tuple => zio.console.putStrLn(tuple.toString)),
-          Response.none
-        )
+      for {
+        queue <- Queue.bounded[Byte] (128)
+        stream = ZStream.fromQueue(queue)
+        sink = ZSink.fromOutputStreamManaged(dest)
+        _ <- stream.run(sink).fork
+      } yield Middleware(
+        request(HttpRequest.Method.zip(HttpRequest.URI)) { tuple =>
+          for {
+            now <- currentDateTime.orDie
+            _ <- queue.offerAll(s"""[$now] "${tuple._1} ${tuple._2.toString}"""".getBytes)
+          } yield ()
+        },
+        Response.none
       )
     )
 
