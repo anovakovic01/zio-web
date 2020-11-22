@@ -95,7 +95,7 @@ object HttpMiddleware {
         _      <- stream.run(sink).fork
       } yield Middleware(
         request(HttpRequest.Method.zip(HttpRequest.URI)) { tuple =>
-          currentDateTime.orDie.map(now => s"- - - [$now] \'${tuple._1} ${tuple._2}\'")
+          currentDateTime.map(_.toString).orElseSucceed("-").map(now => s"- - - [$now] \'${tuple._1} ${tuple._2}\'")
         },
         Response(
           HttpResponse.StatusCode,

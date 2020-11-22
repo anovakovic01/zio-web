@@ -1,4 +1,3 @@
-import java.io.{ FileOutputStream, IOException }
 import java.net.URI
 
 import zio._
@@ -7,9 +6,6 @@ import zio.clock.Clock
 import zio.test.Assertion._
 import zio.test._
 import zio.web.http
-import zio.web.http.HttpRequest
-import zio.web.http.model.{ Method, Route }
-import zio.web.schema.Schema
 
 object HttpMiddlewareSpec extends DefaultRunnableSpec with http.HttpProtocolModule {
   import http.HttpMiddleware
