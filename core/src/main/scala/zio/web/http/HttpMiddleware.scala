@@ -1,12 +1,12 @@
 package zio.web.http
 
-import java.io.{IOException, OutputStream}
 import java.nio.charset.StandardCharsets
+import java.nio.file.Paths
 
 import zio._
 import zio.blocking.Blocking
 import zio.clock._
-import zio.stream.{ZSink, ZStream}
+import zio.stream.{ Sink, ZSink, ZStream }
 
 /**
  * An `HttpMiddleware[R, E]` value defines HTTP middleware that requires an
@@ -87,23 +87,27 @@ object HttpMiddleware {
       )
     )
 
-  def logging(dest: ZManaged[Blocking, IOException, OutputStream]): HttpMiddleware[Blocking with Clock, Exception] =
+  def logging[R, E](sink: ZSink[R, E, String, Byte, Long]): HttpMiddleware[Clock with R, Nothing] =
     HttpMiddleware(
       for {
-        queue <- Queue.bounded[Byte] (128)
+        queue  <- Queue.bounded[String](128)
         stream = ZStream.fromQueue(queue)
-        sink = ZSink.fromOutputStreamManaged(dest)
-        _ <- stream.run(sink).fork
+        _      <- stream.run(sink).fork
       } yield Middleware(
         request(HttpRequest.Method.zip(HttpRequest.URI)) { tuple =>
           for {
             now <- currentDateTime.orDie
-            _ <- queue.offerAll(s"""[$now] "${tuple._1} ${tuple._2.toString}"""".getBytes)
+            _   <- queue.offer(s"- - - [$now] \'${tuple._1} ${tuple._2}\' - -\n")
           } yield ()
         },
         Response.none
       )
     )
+
+  def fileSink(path: String): ZSink[Blocking, Throwable, String, Byte, Long] =
+    Sink
+      .fromFile(Paths.get(path))
+      .contramapChunks[String](_.flatMap(str => Chunk.fromIterable(str.getBytes)))
 
   def rateLimiter(n: Int): HttpMiddleware[Any, None.type] =
     HttpMiddleware(
