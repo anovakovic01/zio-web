@@ -95,12 +95,12 @@ object HttpMiddleware {
         _      <- stream.run(sink).fork
       } yield Middleware(
         request(HttpRequest.Method.zip(HttpRequest.URI)) { tuple =>
-          for {
-            now <- currentDateTime.orDie
-            _   <- queue.offer(s"- - - [$now] \'${tuple._1} ${tuple._2}\' - -\n")
-          } yield ()
+          currentDateTime.orDie.map(now => s"- - - [$now] \'${tuple._1} ${tuple._2}\'")
         },
-        Response.none
+        Response(
+          HttpResponse.StatusCode,
+          (state: String, code: Int) => queue.offer(s"$state $code - \n").as(HttpHeaders.empty)
+        )
       )
     )
 
