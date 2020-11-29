@@ -45,7 +45,6 @@ object HttpRequest {
   }
 
   final case class Header(name: String) extends HttpRequest[String] {
-
     def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[String] =
       headers.value.get(name)
   }
@@ -54,8 +53,14 @@ object HttpRequest {
     def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[URI] = Some(uri)
   }
 
-  final case class Map[A, B](request: HttpRequest[A], f: A => B) extends HttpRequest[B] {
+  final case object IpAddress extends HttpRequest[java.net.InetAddress] {
+    def run(method: String, uri: java.net.URI, headers:HttpHeaders): Option[java.net.InetAddress] =
+      headers.value.get("True-Client-IP")
+        .orElse(headers.value.get("X-Forwarded-For"))
+        .map(java.net.InetAddress.getByName)
+  }
 
+  final case class Map[A, B](request: HttpRequest[A], f: A => B) extends HttpRequest[B] {
     def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[B] =
       request.run(method, uri, headers).map(f)
   }

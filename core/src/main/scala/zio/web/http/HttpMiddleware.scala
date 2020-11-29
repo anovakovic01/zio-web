@@ -94,12 +94,14 @@ object HttpMiddleware {
         stream = ZStream.fromQueue(queue)
         _      <- stream.run(sink).fork
       } yield Middleware(
-        request(HttpRequest.Method.zip(HttpRequest.URI)) { tuple =>
-          currentDateTime.map(_.toString).orElseSucceed("-").map(now => s"- - - [$now] \'${tuple._1} ${tuple._2}\'")
+        request(HttpRequest.Method.zip(HttpRequest.URI).zip(HttpRequest.IpAddress)) {
+          case ((method, uri), ipAddress) =>
+            currentDateTime
+              .fold(_ => s"$ipAddress - - - \'$method $uri\'", now => s"$ipAddress - - [$now] \'$method $uri\'")
         },
         Response(
-          HttpResponse.StatusCode,
-          (state: String, code: Int) => queue.offer(s"$state $code - \n").as(HttpHeaders.empty)
+          HttpResponse.StatusCode.zip(HttpResponse.Header("Content-Length")),
+          (state: String, resp: (Int, String)) => queue.offer(s"$state ${resp._1} ${resp._2} \n").as(Patch.empty)
         )
       )
     )
@@ -126,7 +128,7 @@ object HttpMiddleware {
                 ),
                 Response(
                   HttpResponse.Succeed,
-                  (flag: Boolean, _: Unit) => (if (flag) ref.update(_ - 1) else ZIO.unit).as(Patch.empty)
+                  (flag: Boolean, _: Unit) => ref.update(_ - 1).when(flag).as(Patch.empty)
                 )
               )
             }
