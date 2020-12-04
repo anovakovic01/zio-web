@@ -1,12 +1,13 @@
 package zio.web.http
 
 import java.nio.charset.StandardCharsets
-import java.nio.file.Paths
-
 import zio._
 import zio.blocking.Blocking
 import zio.clock._
 import zio.stream.{ Sink, ZSink, ZStream }
+
+import java.io.{ FileOutputStream, IOException, OutputStream }
+import java.time.format.DateTimeFormatter
 
 /**
  * An `HttpMiddleware[R, E]` value defines HTTP middleware that requires an
@@ -87,7 +88,9 @@ object HttpMiddleware {
       )
     )
 
-  def logging[R, E](sink: ZSink[R, E, String, Byte, Long]): HttpMiddleware[Clock with R, Nothing] =
+  def logging[R, E](sink: ZSink[R, E, String, Byte, Long]): HttpMiddleware[Clock with R, Nothing] = {
+    val formatter = DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss Z")
+
     HttpMiddleware(
       for {
         queue  <- Queue.bounded[String](128)
@@ -96,20 +99,36 @@ object HttpMiddleware {
       } yield Middleware(
         request(HttpRequest.Method.zip(HttpRequest.URI).zip(HttpRequest.IpAddress)) {
           case ((method, uri), ipAddress) =>
+            val ipAddr = ipAddress.getHostAddress
             currentDateTime
-              .fold(_ => s"$ipAddress - - - \'$method $uri\'", now => s"$ipAddress - - [$now] \'$method $uri\'")
+              .fold(
+                _ => s"$ipAddr - - - \'$method $uri\'",
+                now => {
+                  val time = now.format(formatter)
+                  s"$ipAddr - - [$time] \'$method $uri\'"
+                }
+              )
         },
         Response(
           HttpResponse.StatusCode.zip(HttpResponse.Header("Content-Length")),
-          (state: String, resp: (Int, String)) => queue.offer(s"$state ${resp._1} ${resp._2} \n").as(Patch.empty)
+          (state: String, resp: (Int, String)) => queue.offer(s"$state ${resp._1} ${resp._2}\n").as(Patch.empty)
         )
       )
     )
+  }
 
-  def fileSink(path: String): ZSink[Blocking, Throwable, String, Byte, Long] =
+  def fileSink(path: String): ZSink[Blocking, Throwable, String, Byte, Long] = {
+    val stream: ZManaged[Blocking, IOException, OutputStream] =
+      ZManaged
+        .fromAutoCloseable(
+          ZIO.effect(new FileOutputStream(path, true))
+        )
+        .refineToOrDie[IOException]
+
     Sink
-      .fromFile(Paths.get(path))
+      .fromOutputStreamManaged(stream)
       .contramapChunks[String](_.flatMap(str => Chunk.fromIterable(str.getBytes)))
+  }
 
   def rateLimiter(n: Int): HttpMiddleware[Any, None.type] =
     HttpMiddleware(
