@@ -54,13 +54,20 @@ object HttpRequest {
     def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[URI] = Some(uri)
   }
 
-  final case object IpAddress extends HttpRequest[java.net.InetAddress] {
+  final case object IpAddress extends HttpRequest[Option[java.net.InetAddress]] {
 
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[java.net.InetAddress] =
-      headers.value
-        .get("True-Client-IP")
-        .orElse(headers.value.get("X-Forwarded-For"))
-        .map(java.net.InetAddress.getByName)
+    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[Option[java.net.InetAddress]] =
+      Some(
+        headers.value
+          .get("True-Client-IP")
+          .orElse(
+            headers.value.get("X-Forwarded-For").flatMap { cs =>
+              val c = cs.takeWhile(_ != ',')
+              if (c.isEmpty) None else Some(c)
+            }
+          )
+          .map(java.net.InetAddress.getByName)
+      )
   }
 
   final case class Map[A, B](request: HttpRequest[A], f: A => B) extends HttpRequest[B] {

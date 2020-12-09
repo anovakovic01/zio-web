@@ -98,14 +98,14 @@ object HttpMiddleware {
         _      <- stream.run(sink).fork
       } yield Middleware(
         request(HttpRequest.Method.zip(HttpRequest.URI).zip(HttpRequest.IpAddress)) {
-          case ((method, uri), ipAddress) =>
-            val ipAddr = ipAddress.getHostAddress
+          case ((method, uri), ipAddr) =>
+            val ipStr = ipAddr.fold("-")(_.getHostAddress)
             currentDateTime
               .fold(
-                _ => s"$ipAddr - - - \'$method $uri\'",
+                _ => s"$ipStr - - - ${"\""}$method $uri${"\""}",
                 now => {
                   val time = now.format(formatter)
-                  s"$ipAddr - - [$time] \'$method $uri\'"
+                  s"$ipStr - - [$time] ${"\""}$method $uri${"\""}"
                 }
               )
         },
