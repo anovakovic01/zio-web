@@ -43,8 +43,13 @@ object HttpMiddleware {
     def mapError[E2](f: E => E2): Middleware.Aux[R, E2, State] =
       Middleware(request.mapError(f), response.mapError(f))
 
-    def runRequest(method: String, uri: java.net.URI, headers: HttpHeaders): ZIO[R, Option[(State, E)], State] =
-      request.run(method, uri, headers)
+    def runRequest(
+      method: String,
+      uri: java.net.URI,
+      version: String,
+      headers: HttpHeaders
+    ): ZIO[R, Option[(State, E)], State] =
+      request.run(method, uri, version, headers)
 
     def runResponse[S2 <: State](s: S2, statusCode: Int, headers: HttpHeaders): ZIO[R, Option[E], Patch] =
       response.run(s, statusCode, headers)
@@ -97,15 +102,15 @@ object HttpMiddleware {
         stream = ZStream.fromQueue(queue)
         _      <- stream.run(sink).fork
       } yield Middleware(
-        request(HttpRequest.Method.zip(HttpRequest.URI).zip(HttpRequest.IpAddress)) {
-          case ((method, uri), ipAddr) =>
+        request(HttpRequest.Method.zip(HttpRequest.URI).zip(HttpRequest.Version).zip(HttpRequest.IpAddress)) {
+          case (((method, uri), version), ipAddr) =>
             val ipStr = ipAddr.fold("-")(_.getHostAddress)
             currentDateTime
               .fold(
-                _ => s"$ipStr - - - ${"\""}$method $uri${"\""}",
+                _ => s"$ipStr - - - ${"\""}$method $uri $version${"\""}",
                 now => {
                   val time = now.format(formatter)
-                  s"$ipStr - - [$time] ${"\""}$method $uri${"\""}"
+                  s"$ipStr - - [$time] ${"\""}$method $uri $version${"\""}"
                 }
               )
         },
@@ -184,8 +189,8 @@ object HttpMiddleware {
     def mapError[E2](f: E => E2): Request[R, E2, S] =
       Request(pattern, (m: Metadata) => self.processor(m).mapError { case (s, e) => (s, f(e)) })
 
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): ZIO[R, Option[(S, E)], S] =
-      pattern.run(method, uri, headers) match {
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): ZIO[R, Option[(S, E)], S] =
+      pattern.run(method, uri, version, headers) match {
         case Some(metadata) => processor(metadata).mapError(Some(_))
         case None           => ZIO.fail(None)
       }

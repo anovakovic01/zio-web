@@ -12,7 +12,7 @@ sealed trait HttpRequest[+A] { self =>
 
   def orElseEither[B](that: HttpRequest[B]): HttpRequest[Either[A, B]] = HttpRequest.OrElseEither(self, that)
 
-  def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[A]
+  def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[A]
 
   def fold[Z](z: Z)(pf: PartialFunction[(Z, HttpRequest[_]), Z]): Z =
     self match {
@@ -33,30 +33,41 @@ sealed trait HttpRequest[+A] { self =>
 
 object HttpRequest {
   case object Succeed extends HttpRequest[Unit] {
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[Unit] = Some(())
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[Unit] = Some(())
   }
 
   case object Fail extends HttpRequest[Nothing] {
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[Nothing] = None
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[Nothing] = None
   }
 
   case object Method extends HttpRequest[String] {
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[String] = Some(method)
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[String] = Some(method)
   }
 
   final case class Header(name: String) extends HttpRequest[String] {
 
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[String] =
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[String] =
       headers.value.get(name)
   }
 
   final case object URI extends HttpRequest[java.net.URI] {
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[URI] = Some(uri)
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[URI] = Some(uri)
+  }
+
+  final case object Version extends HttpRequest[String] {
+
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[String] =
+      Some(version)
   }
 
   final case object IpAddress extends HttpRequest[Option[java.net.InetAddress]] {
 
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[Option[java.net.InetAddress]] =
+    def run(
+      method: String,
+      uri: java.net.URI,
+      version: String,
+      headers: HttpHeaders
+    ): Option[Option[java.net.InetAddress]] =
       Some(
         headers.value
           .get("True-Client-IP")
@@ -72,25 +83,25 @@ object HttpRequest {
 
   final case class Map[A, B](request: HttpRequest[A], f: A => B) extends HttpRequest[B] {
 
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[B] =
-      request.run(method, uri, headers).map(f)
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[B] =
+      request.run(method, uri, version, headers).map(f)
   }
 
   final case class OrElseEither[A, B](left: HttpRequest[A], right: HttpRequest[B]) extends HttpRequest[Either[A, B]] {
 
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[Either[A, B]] = {
-      val l = left.run(method, uri, headers)
-      val r = right.run(method, uri, headers)
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[Either[A, B]] = {
+      val l = left.run(method, uri, version, headers)
+      val r = right.run(method, uri, version, headers)
       l.map(Left(_)).orElse(r.map(Right(_)))
     }
   }
 
   final case class Zip[A, B](left: HttpRequest[A], right: HttpRequest[B]) extends HttpRequest[(A, B)] {
 
-    def run(method: String, uri: java.net.URI, headers: HttpHeaders): Option[(A, B)] =
+    def run(method: String, uri: java.net.URI, version: String, headers: HttpHeaders): Option[(A, B)] =
       for {
-        l <- left.run(method, uri, headers)
-        r <- right.run(method, uri, headers)
+        l <- left.run(method, uri, version, headers)
+        r <- right.run(method, uri, version, headers)
       } yield (l, r)
   }
 }

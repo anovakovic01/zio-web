@@ -29,12 +29,14 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
               for {
                 l       <- HttpMiddleware.logging(dest).make
                 _       <- TestClock.setTime(0.seconds)
-                state   <- l.runRequest(method, new URI(uri), HttpHeaders(Map(clientHeader -> ipAddr)))
+                state   <- l.runRequest(method, new URI(uri), version, HttpHeaders(Map(clientHeader -> ipAddr)))
                 _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
                 _       <- ZIO.succeed(out.size()).repeatUntil(_ > 0)
                 content = new String(out.toByteArray, StandardCharsets.UTF_8)
               } yield assert(content)(
-                equalTo(s"$ipAddr - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri${"\""} $status $length\n")
+                equalTo(
+                  s"$ipAddr - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri $version${"\""} $status $length\n"
+                )
               )
           }
         },
@@ -48,12 +50,14 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
               for {
                 l       <- HttpMiddleware.logging(dest).make
                 _       <- TestClock.setTime(0.seconds)
-                state   <- l.runRequest(method, new URI(uri), HttpHeaders(Map(forwardedHeader -> ipAddr)))
+                state   <- l.runRequest(method, new URI(uri), version, HttpHeaders(Map(forwardedHeader -> ipAddr)))
                 _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
                 _       <- ZIO.succeed(out.size()).repeatUntil(_ > 0)
                 content = new String(out.toByteArray, StandardCharsets.UTF_8)
               } yield assert(content)(
-                equalTo(s"$ipAddr - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri${"\""} $status $length\n")
+                equalTo(
+                  s"$ipAddr - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri $version${"\""} $status $length\n"
+                )
               )
           }
         },
@@ -67,12 +71,12 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
               for {
                 l       <- HttpMiddleware.logging(dest).make
                 _       <- TestClock.setTime(0.seconds)
-                state   <- l.runRequest(method, new URI(uri), HttpHeaders.empty)
+                state   <- l.runRequest(method, new URI(uri), version, HttpHeaders.empty)
                 _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
                 _       <- ZIO.succeed(out.size()).repeatUntil(_ > 0)
                 content = new String(out.toByteArray, StandardCharsets.UTF_8)
               } yield assert(content)(
-                equalTo(s"- - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri${"\""} $status $length\n")
+                equalTo(s"- - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri $version${"\""} $status $length\n")
               )
           }
         },
@@ -82,13 +86,13 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
           for {
             l       <- HttpMiddleware.logging(dest).make
             _       <- TestClock.setTime(0.seconds)
-            state   <- l.runRequest(method, new URI(uri), HttpHeaders(Map(clientHeader -> ipAddr)))
+            state   <- l.runRequest(method, new URI(uri), version, HttpHeaders(Map(clientHeader -> ipAddr)))
             _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
             result  <- ZStream.fromFile(Paths.get(logFile), 32).runCollect
             content = new String(result.toArray, StandardCharsets.UTF_8)
             _       <- ZIO.effect(new File(logFile).delete()).orDie
           } yield assert(content)(
-            equalTo(s"$ipAddr - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri${"\""} $status $length\n")
+            equalTo(s"$ipAddr - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri $version${"\""} $status $length\n")
           )
         }
       )
@@ -99,6 +103,7 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
   val contentLengthHeader = "Content-Length"
   val method              = "GET"
   val uri                 = "http://zio.dev"
+  val version             = "HTTP/1.1"
   val ipAddr              = "127.0.0.1"
   val status              = 200
   val length              = 1000
