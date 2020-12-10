@@ -81,19 +81,23 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
           }
         },
         testM("to the file") {
-          val dest = HttpMiddleware.fileSink(logFile)
-
-          for {
-            l       <- HttpMiddleware.logging(dest).make
-            _       <- TestClock.setTime(0.seconds)
-            state   <- l.runRequest(method, new URI(uri), version, HttpHeaders(Map(clientHeader -> ipAddr)))
-            _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
-            result  <- ZStream.fromFile(Paths.get(logFile), 32).runCollect
-            content = new String(result.toArray, StandardCharsets.UTF_8)
-            _       <- ZIO.effect(new File(logFile).delete()).orDie
-          } yield assert(content)(
-            equalTo(s"$ipAddr - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri $version${"\""} $status $length\n")
-          )
+          ZManaged
+            .make(ZIO.succeed(HttpMiddleware.fileSink(logFile)))(_ => ZIO.effect(new File(logFile).delete()).orDie)
+            .use {
+              dest =>
+                for {
+                  l       <- HttpMiddleware.logging(dest).make
+                  _       <- TestClock.setTime(0.seconds)
+                  state   <- l.runRequest(method, new URI(uri), version, HttpHeaders(Map(clientHeader -> ipAddr)))
+                  _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
+                  result  <- ZStream.fromFile(Paths.get(logFile), 32).runCollect
+                  content = new String(result.toArray, StandardCharsets.UTF_8)
+                } yield assert(content)(
+                  equalTo(
+                    s"$ipAddr - - [01/Jan/1970:00:00:00 +0000] ${"\""}$method $uri $version${"\""} $status $length\n"
+                  )
+                )
+            }
         }
       )
     ).provideCustomLayerShared(Blocking.live)
