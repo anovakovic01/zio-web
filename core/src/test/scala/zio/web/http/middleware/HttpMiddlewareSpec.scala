@@ -1,4 +1,4 @@
-package zio.web.middleware
+package zio.web.http.middleware
 
 import zio._
 import zio.blocking.Blocking
@@ -7,7 +7,7 @@ import zio.stream.{ ZSink, ZStream }
 import zio.test.Assertion._
 import zio.test._
 import zio.test.environment.TestClock
-import zio.web.http.{ HttpHeaders, HttpMiddleware }
+import zio.web.http.HttpHeaders
 
 import java.io.{ ByteArrayOutputStream, File }
 import java.net.URI
@@ -27,7 +27,7 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
                 .contramapChunks[String](_.flatMap(str => Chunk.fromIterable(str.getBytes)))
 
               for {
-                l       <- HttpMiddleware.logging(dest).make
+                l       <- logging(dest).make
                 _       <- TestClock.setTime(0.seconds)
                 state   <- l.runRequest(method, new URI(uri), version, HttpHeaders(Map(clientHeader -> ipAddr)))
                 _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
@@ -48,7 +48,7 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
                 .contramapChunks[String](_.flatMap(str => Chunk.fromIterable(str.getBytes)))
 
               for {
-                l       <- HttpMiddleware.logging(dest).make
+                l       <- logging(dest).make
                 _       <- TestClock.setTime(0.seconds)
                 state   <- l.runRequest(method, new URI(uri), version, HttpHeaders(Map(forwardedHeader -> ipAddr)))
                 _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
@@ -69,7 +69,7 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
                 .contramapChunks[String](_.flatMap(str => Chunk.fromIterable(str.getBytes)))
 
               for {
-                l       <- HttpMiddleware.logging(dest).make
+                l       <- logging(dest).make
                 _       <- TestClock.setTime(0.seconds)
                 state   <- l.runRequest(method, new URI(uri), version, HttpHeaders.empty)
                 _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
@@ -82,15 +82,15 @@ object HttpMiddlewareSpec extends DefaultRunnableSpec {
         },
         testM("to the file") {
           ZManaged
-            .make(ZIO.succeed(HttpMiddleware.fileSink(logFile)))(_ => ZIO.effect(new File(logFile).delete()).orDie)
+            .make(ZIO.succeed(logFile))(path => ZIO.effect(new File(path).delete()).orDie)
             .use {
-              dest =>
+              path =>
                 for {
-                  l       <- HttpMiddleware.logging(dest).make
+                  l       <- fileLogging(path).make
                   _       <- TestClock.setTime(0.seconds)
                   state   <- l.runRequest(method, new URI(uri), version, HttpHeaders(Map(clientHeader -> ipAddr)))
                   _       <- l.runResponse(state, status, HttpHeaders(Map(contentLengthHeader -> length.toString)))
-                  result  <- ZStream.fromFile(Paths.get(logFile), 32).runCollect
+                  result  <- ZStream.fromFile(Paths.get(path), 32).runCollect
                   content = new String(result.toArray, StandardCharsets.UTF_8)
                 } yield assert(content)(
                   equalTo(
